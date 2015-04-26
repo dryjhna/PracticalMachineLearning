@@ -1,0 +1,62 @@
+---
+title: "Machine Learning Assignment 2"
+output: html_document
+---
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har)
+
+
+###Include required libraries and set the environment
+```{r}
+library(caret)
+library(randomForest)
+library(doParallel)
+```
+
+###Load the data and clean up to keep only required variables
+All the variables/reading associated with time, window or name of the participant are removed. All the variables with high NAs are removed(any variable having NA for this dataset has largely the NA values only)
+The variables associated with "belt", "arm", "dumbbell" and "forearm" sensor readings are kept as predictors.
+
+```{r}
+activity <- read.csv("pml-training.csv")
+submission <- read.csv("pml-testing.csv")
+activity <- activity[,colSums(is.na(activity)) == 0]
+activity <- activity[,colSums((activity=="")) == 0]
+keepCols <- grep(paste(c("belt","arm","dumbbell","forearm"),collapse="|"),colnames(activity),value=T)
+activity <- activity[,c(keepCols,"classe")]
+```
+
+###Dividing the data into training set and testing set
+```{r}
+set.seed(3452)
+intrain <- createDataPartition(y=activity$classe,p=0.7,list=F)
+training <- activity[intrain,]
+testing <- activity[-intrain,]
+```
+
+###Training the model with 6 fold cross validataion
+The model is trained with 6 fold repeated cross validation. To speed up the process parallel processing is used which can work well on multicore computers
+
+```{r}
+cluster <- makeCluster(detectCores()-1)
+registerDoParallel(cluster)
+tgrid = expand.grid(mtry=c(6))
+tControl <- trainControl(method="repeatedcv",number =6,repeats=6,allowParallel=TRUE)
+modFit <- train(classe~.,data=training,method="rf",trControl=tControl,tuneGrid=tgrid)
+stopCluster(cluster)
+print(modFit)
+```
+
+###Run the model against for cross-validation against testing set.
+Confusion matrix here provide us the out of sample error rate, the limited number of k folds might result in overfitting
+```{r}
+pred <- predict(modFit,newdata=testing)
+cm <- confusionMatrix(pred,testing$classe)
+print(cm)
+```
+###Predict the classe variable for 20 observation for submission(Results not printed)
+```{r}
+answers <- predict(modFit,submission)
+```
